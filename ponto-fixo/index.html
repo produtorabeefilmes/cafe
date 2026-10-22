@@ -1,0 +1,857 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#14181d">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Ponto Fixo</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%2314181d'/%3E%3Ccircle cx='12' cy='12' r='6.5' fill='none' stroke='%234fb0ff' stroke-width='2.2'/%3E%3Cpath d='M12 3v5M12 16v5M3 12h5M16 12h5' stroke='%234fb0ff' stroke-width='2.2'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+/* Layout: tela cheia de câmera; lista de pontos e histórico como folhas sobre fundo grafite */
+:root{
+  --bg:#14181d; --panel:#1d232a; --panel2:#262e37; --line:#33404c;
+  --fg:#eef2f5; --muted:#93a1ae; --accent:#4fb0ff; --accent-ink:#06213a;
+  --edge:#29f0ff; --danger:#ff6b5e; --ok:#5fd68b;
+  --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"Barlow",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --sat:env(safe-area-inset-top,0px); --sab:env(safe-area-inset-bottom,0px);
+  --sal:env(safe-area-inset-left,0px); --sar:env(safe-area-inset-right,0px);
+  color-scheme:dark;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 var(--body);overscroll-behavior:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;touch-action:manipulation}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+.screen{position:fixed;inset:0;display:flex;flex-direction:column}
+
+/* ---------- Início ---------- */
+#home{overflow-y:auto;padding:calc(var(--sat) + 20px) max(16px,var(--sar)) calc(var(--sab) + 110px) max(16px,var(--sal))}
+.brand{display:flex;align-items:baseline;gap:10px}
+.brand h1{font:700 34px/1 var(--display);letter-spacing:.5px;margin:0;text-transform:uppercase}
+.brand .mark{width:22px;height:22px;flex:none;align-self:center}
+.lede{color:var(--muted);margin:6px 0 22px;max-width:36ch}
+.sectionlabel{font:600 13px/1 var(--display);letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+.plist{display:flex;flex-direction:column;gap:10px}
+.pitem{display:grid;grid-template-columns:76px 1fr auto;gap:12px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px;text-align:left;width:100%}
+.pitem .thumb{width:76px;height:76px;border-radius:8px;background:var(--panel2) center/cover no-repeat;display:grid;place-items:center;color:var(--muted)}
+.pitem .name{font:600 20px/1.1 var(--display);letter-spacing:.3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pitem .meta{color:var(--muted);font-size:13px;margin-top:3px;font-variant-numeric:tabular-nums}
+.pitem .go{display:flex;gap:6px}
+.chipbtn{height:40px;min-width:40px;padding:0 12px;border-radius:20px;background:var(--panel2);display:inline-flex;align-items:center;justify-content:center;gap:6px;font-weight:600;font-size:14px}
+.chipbtn svg{width:20px;height:20px}
+.chipbtn.primary{background:var(--accent);color:var(--accent-ink)}
+.empty{border:1px dashed var(--line);border-radius:12px;padding:22px 16px;color:var(--muted)}
+.empty b{color:var(--fg)}
+.howto{margin-top:26px;color:var(--muted);font-size:14px}
+.howto ol{padding-left:20px;margin:8px 0 0;display:grid;gap:6px}
+.fab{position:fixed;left:max(16px,var(--sal));right:max(16px,var(--sar));bottom:calc(var(--sab) + 16px);display:flex;gap:10px}
+.fab button{flex:1;height:54px;border-radius:14px;font:600 18px/1 var(--display);letter-spacing:.6px;text-transform:uppercase;display:flex;align-items:center;justify-content:center;gap:8px}
+.fab .main{background:var(--accent);color:var(--accent-ink)}
+.fab .alt{background:var(--panel2);flex:0 0 auto;padding:0 18px}
+.fab svg{width:22px;height:22px}
+
+/* ---------- Câmera ---------- */
+#cam{background:#000}
+#stageWrap{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#stage{position:relative;background:#000;overflow:hidden}
+#stage video,#stage canvas,#stage img{position:absolute;inset:0;width:100%;height:100%}
+#video{object-fit:fill}
+#refImg{object-fit:cover;pointer-events:none}
+#edgeCanvas{pointer-events:none}
+#grid{pointer-events:none;background-image:linear-gradient(to right,transparent calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% + .5px),transparent calc(33.33% + .5px),transparent calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% + .5px),transparent calc(66.66% + .5px)),linear-gradient(to bottom,transparent calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% + .5px),transparent calc(33.33% + .5px),transparent calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% + .5px),transparent calc(66.66% + .5px))}
+#flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .25s}
+.topbar{position:absolute;top:0;left:0;right:0;padding:calc(var(--sat) + 8px) max(10px,var(--sar)) 24px max(10px,var(--sal));display:flex;align-items:center;gap:8px;background:linear-gradient(rgba(0,0,0,.65),transparent)}
+.topbar .title{flex:1;min-width:0;text-align:center}
+.topbar .title b{display:block;font:600 19px/1.1 var(--display);letter-spacing:.4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.topbar .title span{font-size:12px;color:#c9d3dc;font-variant-numeric:tabular-nums}
+.iconbtn{width:44px;height:44px;border-radius:22px;display:grid;place-items:center;background:rgba(20,24,29,.55);flex:none}
+.iconbtn svg{width:22px;height:22px}
+.iconbtn.on{background:var(--accent);color:var(--accent-ink)}
+.bottombar{position:absolute;left:0;right:0;bottom:0;padding:28px max(14px,var(--sar)) calc(var(--sab) + 14px) max(14px,var(--sal));background:linear-gradient(transparent,rgba(0,0,0,.75) 30%);display:flex;flex-direction:column;gap:12px}
+.row{display:flex;align-items:center;gap:10px}
+.seg{display:flex;background:rgba(20,24,29,.7);border-radius:20px;padding:3px;gap:2px}
+.seg button{height:34px;padding:0 12px;border-radius:17px;font-weight:600;font-size:13px;color:#c9d3dc}
+.seg button[aria-pressed="true"]{background:var(--fg);color:#111}
+.slider{flex:1;display:flex;align-items:center;gap:8px;color:#c9d3dc;font-size:12px;font-variant-numeric:tabular-nums}
+.slider input{flex:1;accent-color:var(--accent);height:28px}
+.slider output{width:38px;text-align:right}
+.shutterrow{display:grid;grid-template-columns:1fr auto 1fr;align-items:center}
+.shutter{width:76px;height:76px;border-radius:50%;border:4px solid #fff;display:grid;place-items:center}
+.shutter i{width:60px;height:60px;border-radius:50%;background:#fff;transition:transform .1s}
+.shutter:active i{transform:scale(.88)}
+.refthumb{justify-self:start;width:52px;height:52px;border-radius:10px;border:2px solid rgba(255,255,255,.8);background:#222 center/cover no-repeat;display:grid;place-items:center}
+.refthumb svg{width:24px;height:24px}
+.zooms{justify-self:end;display:flex;gap:4px}
+.zooms button{width:42px;height:42px;border-radius:21px;background:rgba(20,24,29,.7);font-weight:600;font-size:13px;font-variant-numeric:tabular-nums}
+.zooms button[aria-pressed="true"]{background:var(--fg);color:#111}
+.camerr{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;background:var(--bg)}
+.camerr div{max-width:34ch;display:grid;gap:12px;justify-items:center}
+.camerr h2{font:600 24px/1.1 var(--display);margin:0}
+.camerr p{margin:0;color:var(--muted)}
+.hint{position:absolute;left:50%;top:calc(var(--sat) + 70px);transform:translateX(-50%);background:rgba(20,24,29,.8);padding:8px 14px;border-radius:18px;font-size:13px;white-space:nowrap;pointer-events:none}
+
+/* ---------- Folhas (histórico, revisão, ajustes) ---------- */
+.sheet{background:var(--bg)}
+.sheethead{display:flex;align-items:center;gap:8px;padding:calc(var(--sat) + 8px) max(10px,var(--sar)) 8px max(10px,var(--sal));border-bottom:1px solid var(--line)}
+.sheethead h2{flex:1;min-width:0;margin:0;font:600 22px/1.1 var(--display);letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sheetbody{flex:1;overflow-y:auto;padding:16px max(16px,var(--sar)) calc(var(--sab) + 24px) max(16px,var(--sal));display:flex;flex-direction:column;gap:18px}
+.iconbtn.flat{background:var(--panel2)}
+
+.compare{position:relative;width:100%;border-radius:10px;overflow:hidden;background:#000;touch-action:none;user-select:none}
+.compare img{display:block;width:100%;height:auto}
+.compare .after{position:absolute;inset:0;overflow:hidden}
+.compare .after img{position:absolute;top:0;left:0;height:100%;width:auto;max-width:none}
+.compare .handle{position:absolute;top:0;bottom:0;width:2px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.3)}
+.compare .handle::after{content:"";position:absolute;top:50%;left:50%;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.4)}
+.compare .tag{position:absolute;top:8px;padding:3px 8px;border-radius:4px;background:rgba(0,0,0,.6);font:600 12px/1.2 var(--display);letter-spacing:1px;text-transform:uppercase}
+.cmpctl{display:flex;gap:8px;flex-wrap:wrap;align-items:center;color:var(--muted);font-size:13px}
+.cmpctl select{background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:8px;height:36px;padding:0 8px;font:inherit;min-width:0;max-width:100%}
+.timeline{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.timeline button{position:relative;aspect-ratio:3/4;border-radius:8px;overflow:hidden;background:var(--panel2) center/cover no-repeat}
+.timeline button span{position:absolute;left:0;right:0;bottom:0;padding:14px 6px 5px;background:linear-gradient(transparent,rgba(0,0,0,.75));font-size:11px;text-align:left;font-variant-numeric:tabular-nums}
+.timeline button.ref::before{content:"REFERÊNCIA";position:absolute;top:5px;left:5px;padding:2px 6px;border-radius:4px;background:var(--accent);color:var(--accent-ink);font:700 10px/1.2 var(--display);letter-spacing:1px}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap}
+.btn{height:46px;padding:0 16px;border-radius:12px;background:var(--panel2);font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:1 1 auto}
+.btn svg{width:20px;height:20px}
+.btn.primary{background:var(--accent);color:var(--accent-ink)}
+.btn.danger{color:var(--danger)}
+.photo-full{width:100%;border-radius:10px;display:block;background:#000}
+.kv{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+
+.field{display:grid;gap:6px}
+.field label{font:600 13px/1 var(--display);letter-spacing:1.2px;text-transform:uppercase;color:var(--muted)}
+.field input[type=text]{height:48px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--fg);padding:0 14px;font:inherit;font-size:16px}
+.toggle{display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+.toggle div{flex:1;min-width:0}
+.toggle small{display:block;color:var(--muted);font-size:13px}
+.toggle input{width:22px;height:22px;accent-color:var(--accent)}
+
+.dialog{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;z-index:50;padding:0 max(10px,var(--sar)) calc(var(--sab) + 10px) max(10px,var(--sal))}
+.dialog .box{width:100%;max-width:480px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;display:grid;gap:14px}
+.dialog h3{margin:0;font:600 22px/1.1 var(--display)}
+.dialog p{margin:0;color:var(--muted)}
+
+#toast{position:fixed;left:50%;bottom:calc(var(--sab) + 150px);transform:translateX(-50%);background:var(--fg);color:#111;padding:10px 16px;border-radius:20px;font-weight:600;font-size:14px;z-index:60;max-width:calc(100% - 32px);text-align:center;box-shadow:0 4px 18px rgba(0,0,0,.4)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<!-- ÍCONES -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-cam" viewBox="0 0 24 24"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="13.2" r="3.6" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+  <symbol id="i-img" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 16l4.5-4.5 4 4 2.5-2.5L20 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="15.5" cy="9.5" r="1.6" fill="currentColor"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><path d="M4 9h16M4 15h16M9 4v16M15 4v16" stroke="currentColor" stroke-width="1.8"/><rect x="4" y="4" width="16" height="16" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2.8v2.6M12 18.6v2.6M21.2 12h-2.6M5.4 12H2.8M18.5 5.5l-1.8 1.8M7.3 16.7l-1.8 1.8M18.5 18.5l-1.8-1.8M7.3 7.3L5.5 5.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-hist" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="13" y="4" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="4" y="13" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="13" y="13" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 19.5h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><circle cx="6" cy="12" r="2.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17.5" cy="6" r="2.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17.5" cy="18" r="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8.2 10.8l7-3.6M8.2 13.2l7 3.6" stroke="currentColor" stroke-width="2"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M5 7h14M10 4h4M7 7l1 13h8l1-13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-6-5.6-6-10.5a6 6 0 0112 0C18 15.4 12 21 12 21z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="10.5" r="2.2" fill="currentColor"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+</svg>
+
+<!-- INÍCIO -->
+<section id="home" class="screen">
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="var(--accent)" stroke-width="2.4"/><path d="M12 1.5v6M12 16.5v6M1.5 12h6M16.5 12h6" stroke="var(--accent)" stroke-width="2.4"/></svg>
+    <h1>Ponto Fixo</h1>
+  </div>
+  <p class="lede">Fotos da obra sempre do mesmo lugar. A última foto de cada ponto aparece transparente na câmera para você alinhar.</p>
+  <h2 class="sectionlabel">Pontos de foto</h2>
+  <div id="plist" class="plist"></div>
+  <div class="howto" id="howto">
+    <h2 class="sectionlabel">Como usar</h2>
+    <ol>
+      <li>Crie um ponto para cada lugar que você fotografa (Fachada, Sala, Laje…).</li>
+      <li>Na primeira visita, tire a foto normalmente.</li>
+      <li>Nas próximas, a foto anterior aparece por cima. Ande até as linhas baterem e clique.</li>
+      <li>Use <b>Contorno</b> quando a obra mudou muito: ele mostra só as linhas de paredes, janelas e pilares.</li>
+    </ol>
+  </div>
+  <div class="fab">
+    <button class="alt" id="btnFree" type="button" aria-label="Foto avulsa com referência da galeria"><svg><use href="#i-img"/></svg>Avulsa</button>
+    <button class="main" id="btnNew" type="button"><svg><use href="#i-plus"/></svg>Novo ponto</button>
+  </div>
+</section>
+
+<!-- CÂMERA -->
+<section id="cam" class="screen" hidden>
+  <div id="stageWrap">
+    <div id="stage">
+      <video id="video" playsinline muted autoplay></video>
+      <img id="refImg" alt="" hidden>
+      <canvas id="edgeCanvas" hidden></canvas>
+      <div id="grid" hidden></div>
+      <div id="flash"></div>
+    </div>
+  </div>
+  <div class="topbar">
+    <button class="iconbtn" id="camBack" type="button" aria-label="Voltar"><svg><use href="#i-back"/></svg></button>
+    <div class="title"><b id="camTitle">Ponto</b><span id="camSub"></span></div>
+    <button class="iconbtn" id="btnGrid" type="button" aria-label="Grade" aria-pressed="false"><svg><use href="#i-grid"/></svg></button>
+    <button class="iconbtn" id="btnHist" type="button" aria-label="Histórico do ponto"><svg><use href="#i-hist"/></svg></button>
+  </div>
+  <div class="hint" id="hint" hidden></div>
+  <div class="bottombar">
+    <div class="row" id="refControls">
+      <div class="seg" role="group" aria-label="Tipo de referência">
+        <button type="button" data-mode="photo" aria-pressed="true">Foto</button>
+        <button type="button" data-mode="edge" aria-pressed="false">Contorno</button>
+        <button type="button" data-mode="off" aria-pressed="false">Ocultar</button>
+      </div>
+      <label class="slider" for="opacity"><input id="opacity" type="range" min="5" max="90" value="45" aria-label="Transparência da referência"><output id="opOut">45%</output></label>
+    </div>
+    <div class="shutterrow">
+      <button class="refthumb" id="btnPickRef" type="button" aria-label="Escolher foto de referência da galeria"><svg><use href="#i-img"/></svg></button>
+      <button class="shutter" id="shutter" type="button" aria-label="Tirar foto"><i></i></button>
+      <div class="zooms" id="zooms"></div>
+    </div>
+  </div>
+  <div class="camerr" id="camErr" hidden><div>
+    <svg width="44" height="44" style="color:var(--muted)"><use href="#i-cam"/></svg>
+    <h2 id="camErrTitle">Câmera bloqueada</h2>
+    <p id="camErrText"></p>
+    <button class="btn primary" id="camRetry" type="button" style="flex:none">Tentar de novo</button>
+    <button class="btn" id="camErrBack" type="button" style="flex:none">Voltar</button>
+  </div></div>
+  <input type="file" id="refFile" accept="image/*" hidden>
+</section>
+
+<!-- REVISÃO DA FOTO -->
+<section id="review" class="screen sheet" hidden>
+  <div class="sheethead">
+    <button class="iconbtn flat" id="revBack" type="button" aria-label="Voltar à câmera"><svg><use href="#i-back"/></svg></button>
+    <h2 id="revTitle">Foto</h2>
+  </div>
+  <div class="sheetbody">
+    <img id="revImg" class="photo-full" alt="Foto tirada">
+    <div class="kv" id="revMeta"></div>
+    <div class="btnrow">
+      <button class="btn primary" id="revSave" type="button"><svg><use href="#i-down"/></svg>Salvar no celular</button>
+      <button class="btn" id="revShare" type="button"><svg><use href="#i-share"/></svg>Compartilhar</button>
+    </div>
+    <div class="btnrow">
+      <button class="btn" id="revAgain" type="button"><svg><use href="#i-cam"/></svg>Outra foto</button>
+      <button class="btn danger" id="revDelete" type="button"><svg><use href="#i-trash"/></svg>Descartar</button>
+    </div>
+  </div>
+</section>
+
+<!-- HISTÓRICO DO PONTO -->
+<section id="hist" class="screen sheet" hidden>
+  <div class="sheethead">
+    <button class="iconbtn flat" id="histBack" type="button" aria-label="Voltar"><svg><use href="#i-back"/></svg></button>
+    <h2 id="histTitle">Ponto</h2>
+    <button class="iconbtn flat" id="histRename" type="button" aria-label="Renomear ponto"><svg><use href="#i-edit"/></svg></button>
+    <button class="iconbtn flat" id="histCam" type="button" aria-label="Abrir câmera deste ponto"><svg><use href="#i-cam"/></svg></button>
+  </div>
+  <div class="sheetbody">
+    <div id="cmpWrap">
+      <div class="compare" id="compare">
+        <img id="cmpA" alt="Antes">
+        <div class="after" id="cmpAfter"><img id="cmpB" alt="Depois"></div>
+        <div class="handle" id="cmpHandle"></div>
+        <span class="tag" style="left:8px" id="tagA">Antes</span>
+        <span class="tag" style="right:8px" id="tagB">Depois</span>
+      </div>
+      <div class="cmpctl" style="margin-top:10px">
+        <span>Antes</span><select id="selA" aria-label="Foto de antes"></select>
+        <span>Depois</span><select id="selB" aria-label="Foto de depois"></select>
+      </div>
+    </div>
+    <div>
+      <h2 class="sectionlabel" id="histCount">Fotos</h2>
+      <div class="timeline" id="timeline"></div>
+    </div>
+    <div class="btnrow">
+      <button class="btn danger" id="histDelete" type="button"><svg><use href="#i-trash"/></svg>Excluir ponto</button>
+    </div>
+  </div>
+</section>
+
+<!-- FOTO DO HISTÓRICO -->
+<section id="photo" class="screen sheet" hidden>
+  <div class="sheethead">
+    <button class="iconbtn flat" id="phBack" type="button" aria-label="Voltar"><svg><use href="#i-back"/></svg></button>
+    <h2 id="phTitle">Foto</h2>
+  </div>
+  <div class="sheetbody">
+    <img id="phImg" class="photo-full" alt="">
+    <div class="kv" id="phMeta"></div>
+    <div class="btnrow">
+      <button class="btn primary" id="phRef" type="button"><svg><use href="#i-pin"/></svg>Usar como referência</button>
+    </div>
+    <div class="btnrow">
+      <button class="btn" id="phSave" type="button"><svg><use href="#i-down"/></svg>Salvar</button>
+      <button class="btn" id="phShare" type="button"><svg><use href="#i-share"/></svg>Compartilhar</button>
+      <button class="btn danger" id="phDelete" type="button"><svg><use href="#i-trash"/></svg>Excluir</button>
+    </div>
+  </div>
+</section>
+
+<!-- DIÁLOGOS -->
+<div class="dialog" id="dlgName" hidden>
+  <form class="box" id="formName">
+    <h3 id="dlgNameTitle">Novo ponto</h3>
+    <div class="field"><label for="inName">Nome do ponto</label><input type="text" id="inName" maxlength="40" placeholder="Ex.: Fachada, Sala, Laje 2º piso" autocomplete="off"></div>
+    <div class="btnrow"><button class="btn" type="button" id="dlgNameCancel">Cancelar</button><button class="btn primary" type="submit" id="dlgNameOk">Criar</button></div>
+  </form>
+</div>
+<div class="dialog" id="dlgConfirm" hidden>
+  <div class="box">
+    <h3 id="cfTitle">Excluir?</h3>
+    <p id="cfText"></p>
+    <div class="btnrow"><button class="btn" type="button" id="cfNo">Cancelar</button><button class="btn danger" type="button" id="cfYes" style="background:var(--danger);color:#2a0703">Excluir</button></div>
+  </div>
+</div>
+<div class="dialog" id="dlgSettings" hidden>
+  <div class="box">
+    <h3>Ajustes</h3>
+    <label class="toggle" for="setStamp"><div>Carimbar data e ponto na foto<small>Escreve “Fachada · 22/10/2026 14:30” no canto da imagem.</small></div><input type="checkbox" id="setStamp"></label>
+    <label class="toggle" for="setAuto"><div>Salvar no celular ao tirar<small>Baixa cada foto automaticamente para a pasta Downloads/galeria.</small></div><input type="checkbox" id="setAuto"></label>
+    <div class="btnrow"><button class="btn primary" type="button" id="setClose">Pronto</button></div>
+  </div>
+</div>
+
+<div id="toast" hidden role="status"></div>
+
+<script>
+(() => {
+'use strict';
+const $ = (id) => document.getElementById(id);
+const screens = ['home','cam','review','hist','photo'];
+
+/* ================= Armazenamento (IndexedDB) ================= */
+const DB_NAME = 'pontofixo', DB_VER = 1;
+let dbp = null;
+function openDB(){
+  if (dbp) return dbp;
+  dbp = new Promise((res, rej) => {
+    const r = indexedDB.open(DB_NAME, DB_VER);
+    r.onupgradeneeded = () => {
+      const d = r.result;
+      if (!d.objectStoreNames.contains('pontos')) d.createObjectStore('pontos', {keyPath:'id'});
+      if (!d.objectStoreNames.contains('fotos')) {
+        const s = d.createObjectStore('fotos', {keyPath:'id'});
+        s.createIndex('ponto', 'pontoId');
+      }
+    };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+  return dbp;
+}
+async function tx(store, mode, fn){
+  const d = await openDB();
+  return new Promise((res, rej) => {
+    const t = d.transaction(store, mode);
+    const s = t.objectStore(store);
+    let out;
+    Promise.resolve(fn(s)).then(v => { out = v; });
+    t.oncomplete = () => res(out);
+    t.onerror = () => rej(t.error);
+    t.onabort = () => rej(t.error);
+  });
+}
+const req2p = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+const getAll = (store) => tx(store, 'readonly', s => req2p(s.getAll()));
+const putRec = (store, v) => tx(store, 'readwrite', s => { s.put(v); });
+const delRec = (store, k) => tx(store, 'readwrite', s => { s.delete(k); });
+async function fotosDo(pontoId){
+  const list = await tx('fotos', 'readonly', s => req2p(s.index('ponto').getAll(pontoId)));
+  return list.sort((a,b) => a.ts - b.ts);
+}
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+
+/* ================= Ajustes ================= */
+const settings = { stamp:true, auto:true, grid:false, mode:'photo', opacity:45 };
+try { Object.assign(settings, JSON.parse(localStorage.getItem('pf_settings') || '{}')); } catch(e){}
+const saveSettings = () => { try { localStorage.setItem('pf_settings', JSON.stringify(settings)); } catch(e){} };
+
+/* ================= Utilidades ================= */
+const fmtDate = (ts) => new Date(ts).toLocaleString('pt-BR', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'});
+const fmtShort = (ts) => new Date(ts).toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit', year:'2-digit'});
+const urls = new Set();
+function blobURL(b){ const u = URL.createObjectURL(b); urls.add(u); return u; }
+function freeURLs(){ urls.forEach(u => URL.revokeObjectURL(u)); urls.clear(); }
+let toastT;
+function toast(msg, ms=2400){ const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, ms); }
+function show(name){ screens.forEach(s => $(s).hidden = s !== name); }
+function slug(s){ return (s || 'foto').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-zA-Z0-9]+/g,'-').replace(/^-|-$/g,'').toLowerCase() || 'foto'; }
+function fileName(ponto, ts){
+  const d = new Date(ts), p = (n) => String(n).padStart(2,'0');
+  return `${slug(ponto ? ponto.name : 'avulsa')}_${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}_${p(d.getHours())}h${p(d.getMinutes())}m${p(d.getSeconds())}.jpg`;
+}
+function download(blob, name){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+async function share(blob, name){
+  const file = new File([blob], name, {type:'image/jpeg'});
+  if (navigator.canShare && navigator.canShare({files:[file]})) {
+    try { await navigator.share({files:[file], title:name}); } catch(e){ if (e.name !== 'AbortError') toast('Não foi possível compartilhar.'); }
+  } else { download(blob, name); toast('Este navegador não compartilha arquivos. A foto foi baixada.'); }
+}
+function confirmBox(title, text, yesLabel='Excluir'){
+  return new Promise(res => {
+    $('cfTitle').textContent = title; $('cfText').textContent = text; $('cfYes').textContent = yesLabel;
+    $('dlgConfirm').hidden = false;
+    const done = (v) => { $('dlgConfirm').hidden = true; $('cfYes').onclick = $('cfNo').onclick = null; res(v); };
+    $('cfYes').onclick = () => done(true); $('cfNo').onclick = () => done(false);
+  });
+}
+function askName(title, okLabel, initial=''){
+  return new Promise(res => {
+    $('dlgNameTitle').textContent = title; $('dlgNameOk').textContent = okLabel;
+    const inp = $('inName'); inp.value = initial; $('dlgName').hidden = false;
+    setTimeout(() => inp.focus(), 50);
+    const done = (v) => { $('dlgName').hidden = true; $('formName').onsubmit = null; $('dlgNameCancel').onclick = null; res(v); };
+    $('formName').onsubmit = (e) => { e.preventDefault(); const v = inp.value.trim(); if (!v){ inp.focus(); return; } done(v); };
+    $('dlgNameCancel').onclick = () => done(null);
+  });
+}
+
+/* ================= Início ================= */
+async function renderHome(){
+  freeURLs();
+  const pontos = (await getAll('pontos')).sort((a,b) => (b.updated||b.created) - (a.updated||a.created));
+  const list = $('plist'); list.innerHTML = '';
+  $('howto').hidden = pontos.length > 2;
+  if (!pontos.length){
+    const e = document.createElement('div'); e.className = 'empty';
+    e.innerHTML = '<b>Nenhum ponto ainda.</b><br>Toque em <b>Novo ponto</b>, dê um nome (ex.: Fachada) e tire a primeira foto.';
+    list.appendChild(e); return;
+  }
+  for (const p of pontos){
+    const fotos = await fotosDo(p.id);
+    const last = fotos[fotos.length-1];
+    const refF = fotos.find(f => f.id === p.refId) || last;
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'pitem';
+    const th = document.createElement('div'); th.className = 'thumb';
+    if (refF) th.style.backgroundImage = `url(${blobURL(refF.blob)})`; else th.innerHTML = '<svg width="26" height="26"><use href="#i-cam"/></svg>';
+    const mid = document.createElement('div'); mid.style.minWidth = '0';
+    const nm = document.createElement('div'); nm.className = 'name'; nm.textContent = p.name;
+    const mt = document.createElement('div'); mt.className = 'meta';
+    mt.textContent = fotos.length ? `${fotos.length} foto${fotos.length>1?'s':''} · última ${fmtShort(last.ts)}` : 'Sem fotos ainda';
+    mid.append(nm, mt);
+    const go = document.createElement('div'); go.className = 'go';
+    const hb = document.createElement('span'); hb.className = 'chipbtn'; hb.setAttribute('role','button'); hb.setAttribute('aria-label','Histórico'); hb.innerHTML = '<svg><use href="#i-hist"/></svg>';
+    hb.addEventListener('click', (ev) => { ev.stopPropagation(); openHist(p.id); });
+    const cb = document.createElement('span'); cb.className = 'chipbtn primary'; cb.innerHTML = '<svg><use href="#i-cam"/></svg>';
+    go.append(hb, cb);
+    b.append(th, mid, go);
+    b.addEventListener('click', () => openCam(p.id));
+    list.appendChild(b);
+  }
+}
+$('btnNew').addEventListener('click', async () => {
+  const name = await askName('Novo ponto', 'Criar');
+  if (!name) return;
+  const p = {id:uid(), name, created:Date.now(), updated:Date.now(), refId:null};
+  await putRec('pontos', p);
+  openCam(p.id);
+});
+$('btnFree').addEventListener('click', () => openCam(null, true));
+
+/* ================= Câmera ================= */
+const video = $('video'), stage = $('stage'), refImg = $('refImg'), edgeCanvas = $('edgeCanvas');
+let stream = null, track = null, curPonto = null, refBlob = null, refURL = null, edgeReady = false;
+let zoomCaps = null, wakeLock = null;
+
+async function openCam(pontoId, pickRef=false){
+  curPonto = pontoId ? (await getAll('pontos')).find(p => p.id === pontoId) : null;
+  $('camTitle').textContent = curPonto ? curPonto.name : 'Foto avulsa';
+  $('btnHist').hidden = !curPonto;
+  show('cam');
+  await setRefFromPonto();
+  applyOverlay();
+  await startCamera();
+  if (pickRef && !refBlob) $('refFile').click();
+}
+async function setRefFromPonto(){
+  let blob = null, count = 0;
+  if (curPonto){
+    const fotos = await fotosDo(curPonto.id); count = fotos.length;
+    const r = fotos.find(f => f.id === curPonto.refId) || fotos[fotos.length-1];
+    if (r) blob = r.blob;
+    $('camSub').textContent = count ? `${count} foto${count>1?'s':''} · referência ${r ? fmtShort(r.ts) : ''}` : 'Primeira foto deste ponto';
+  } else $('camSub').textContent = refBlob ? 'Referência da galeria' : 'Escolha uma referência na galeria';
+  if (curPonto || blob) setRef(blob);
+}
+function setRef(blob){
+  refBlob = blob; edgeReady = false;
+  if (refURL){ URL.revokeObjectURL(refURL); refURL = null; }
+  const thumb = $('btnPickRef');
+  if (!blob){ refImg.removeAttribute('src'); thumb.style.backgroundImage = ''; thumb.innerHTML = '<svg><use href="#i-img"/></svg>'; applyOverlay(); return; }
+  refURL = URL.createObjectURL(blob);
+  refImg.src = refURL;
+  thumb.innerHTML = ''; thumb.style.backgroundImage = `url(${refURL})`;
+  refImg.onload = () => { layoutStage(); buildEdges(); applyOverlay(); };
+}
+function applyOverlay(){
+  const has = !!refBlob, m = settings.mode;
+  $('refControls').style.visibility = has ? 'visible' : 'hidden';
+  refImg.hidden = !(has && m === 'photo');
+  edgeCanvas.hidden = !(has && m === 'edge');
+  const o = settings.opacity / 100;
+  refImg.style.opacity = o;
+  edgeCanvas.style.opacity = Math.min(1, o + 0.35);
+  $('opacity').value = settings.opacity; $('opOut').textContent = settings.opacity + '%';
+  document.querySelectorAll('.seg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
+  $('grid').hidden = !settings.grid;
+  $('btnGrid').classList.toggle('on', settings.grid); $('btnGrid').setAttribute('aria-pressed', String(settings.grid));
+  if (has && m === 'edge' && !edgeReady) buildEdges();
+}
+document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => { settings.mode = b.dataset.mode; saveSettings(); applyOverlay(); }));
+$('opacity').addEventListener('input', (e) => { settings.opacity = +e.target.value; saveSettings(); applyOverlay(); });
+$('btnGrid').addEventListener('click', () => { settings.grid = !settings.grid; saveSettings(); applyOverlay(); });
+$('btnPickRef').addEventListener('click', () => $('refFile').click());
+$('refFile').addEventListener('change', (e) => {
+  const f = e.target.files && e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  setRef(f);
+  if (settings.mode === 'off') settings.mode = 'photo';
+  applyOverlay();
+  $('camSub').textContent = 'Referência escolhida da galeria';
+  toast('Referência carregada. Alinhe e tire a foto.');
+});
+
+/* Contorno: bordas da referência (Sobel) desenhadas como linhas */
+function buildEdges(){
+  if (!refBlob || !refImg.naturalWidth) return;
+  const sw = stage.clientWidth, sh = stage.clientHeight;
+  if (!sw || !sh) return;
+  const scale = Math.min(1, 900 / Math.max(sw, sh));
+  const W = Math.max(2, Math.round(sw*scale)), H = Math.max(2, Math.round(sh*scale));
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d', {willReadFrequently:true});
+  drawCover(g, refImg, refImg.naturalWidth, refImg.naturalHeight, W, H);
+  const src = g.getImageData(0,0,W,H).data;
+  const gray = new Float32Array(W*H);
+  for (let i=0,j=0;i<src.length;i+=4,j++) gray[j] = 0.299*src[i]+0.587*src[i+1]+0.114*src[i+2];
+  // leve desfoque 3x3 para reduzir ruído
+  const bl = new Float32Array(W*H);
+  for (let y=1;y<H-1;y++) for (let x=1;x<W-1;x++){
+    let s=0; for (let dy=-1;dy<=1;dy++) for (let dx=-1;dx<=1;dx++) s+=gray[(y+dy)*W+x+dx];
+    bl[y*W+x]=s/9;
+  }
+  const mag = new Float32Array(W*H); let max = 0;
+  for (let y=1;y<H-1;y++) for (let x=1;x<W-1;x++){
+    const i=y*W+x;
+    const gx = -bl[i-W-1]-2*bl[i-1]-bl[i+W-1]+bl[i-W+1]+2*bl[i+1]+bl[i+W+1];
+    const gy = -bl[i-W-1]-2*bl[i-W]-bl[i-W+1]+bl[i+W-1]+2*bl[i+W]+bl[i+W+1];
+    const m = Math.hypot(gx,gy); mag[i]=m; if (m>max) max=m;
+  }
+  // limiar adaptativo: mantém ~12% dos pixels mais fortes
+  const hist = new Uint32Array(256);
+  for (let i=0;i<mag.length;i++) hist[Math.min(255, (mag[i]/(max||1)*255)|0)]++;
+  let acc=0, thr=0; const target = mag.length*0.12;
+  for (let k=255;k>0;k--){ acc+=hist[k]; if (acc>=target){ thr=k; break; } }
+  // nunca abaixo de 12% do máximo nem de um mínimo absoluto (evita ruído em paredes lisas)
+  const t = Math.max(thr / 255 * (max||1), (max||1) * 0.12, 24);
+  edgeCanvas.width = W; edgeCanvas.height = H;
+  const eg = edgeCanvas.getContext('2d');
+  const out = eg.createImageData(W,H), d = out.data;
+  const col = [0x29,0xf0,0xff];
+  // engrossa as linhas em 1 pixel para ficarem visíveis no sol
+  const on = new Uint8Array(W*H);
+  for (let i=0;i<mag.length;i++) if (mag[i] >= t) on[i] = 1;
+  for (let y=1;y<H-1;y++) for (let x=1;x<W-1;x++){
+    const i=y*W+x;
+    if (on[i] || on[i-1] || on[i+1] || on[i-W] || on[i+W]){ const p=i*4; d[p]=col[0]; d[p+1]=col[1]; d[p+2]=col[2]; d[p+3]=on[i] ? 255 : 170; }
+  }
+  eg.putImageData(out,0,0);
+  edgeReady = true;
+}
+function drawCover(g, img, iw, ih, W, H){
+  const s = Math.max(W/iw, H/ih), dw = iw*s, dh = ih*s;
+  g.drawImage(img, (W-dw)/2, (H-dh)/2, dw, dh);
+}
+
+/* Palco do tamanho da imagem da câmera, centralizado */
+function layoutStage(){
+  const vw = video.videoWidth || 3, vh = video.videoHeight || 4;
+  const W = window.innerWidth, H = window.innerHeight;
+  const s = Math.min(W/vw, H/vh);
+  stage.style.width = Math.round(vw*s) + 'px';
+  stage.style.height = Math.round(vh*s) + 'px';
+}
+let resizeT;
+window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { layoutStage(); if (refBlob){ edgeReady=false; if (settings.mode==='edge') buildEdges(); } }, 150); });
+
+async function startCamera(){
+  $('camErr').hidden = true;
+  stopCamera();
+  if (!window.isSecureContext){ camError('Abra pelo link https', 'A câmera só funciona quando a página é aberta por um endereço https. Abra o link que te mandei no Chrome.'); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ camError('Navegador sem câmera', 'Abra esta página no Google Chrome atualizado.'); return; }
+  const tries = [
+    // 4:3, o mesmo formato da câmera nativa do celular, para bater com fotos da galeria
+    {video:{facingMode:{ideal:'environment'}, width:{ideal:4032}, height:{ideal:3024}, aspectRatio:{ideal:4/3}}, audio:false},
+    {video:{facingMode:{ideal:'environment'}, width:{ideal:1920}, height:{ideal:1440}, aspectRatio:{ideal:4/3}}, audio:false},
+    {video:{facingMode:'environment'}, audio:false},
+    {video:true, audio:false}
+  ];
+  let lastErr;
+  for (const c of tries){
+    try { stream = await navigator.mediaDevices.getUserMedia(c); break; } catch(e){ lastErr = e; if (e.name === 'NotAllowedError' || e.name === 'SecurityError') break; }
+  }
+  if (!stream){
+    if (lastErr && (lastErr.name === 'NotAllowedError' || lastErr.name === 'SecurityError'))
+      camError('Câmera bloqueada', 'Toque no cadeado ao lado do endereço, em Permissões, e libere a Câmera. Depois toque em Tentar de novo.');
+    else camError('Câmera indisponível', 'Feche outros apps que estejam usando a câmera e tente de novo.');
+    return;
+  }
+  track = stream.getVideoTracks()[0];
+  video.srcObject = stream;
+  try { await video.play(); } catch(e){}
+  await new Promise(r => { if (video.videoWidth) r(); else video.onloadedmetadata = () => r(); });
+  layoutStage();
+  if (refBlob){ edgeReady = false; if (settings.mode === 'edge') buildEdges(); }
+  setupZoom();
+  try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch(e){}
+  if (!refBlob && curPonto) hint('Primeira foto: escolha bem o lugar e marque no chão onde ficou.');
+}
+function stopCamera(){
+  $('hint').hidden = true; clearTimeout(hintT);
+  if (stream){ stream.getTracks().forEach(t => t.stop()); stream = null; track = null; }
+  video.srcObject = null;
+  if (wakeLock){ try{ wakeLock.release(); }catch(e){} wakeLock = null; }
+}
+function camError(title, text){ $('camErrTitle').textContent = title; $('camErrText').textContent = text; $('camErr').hidden = false; }
+$('camRetry').addEventListener('click', startCamera);
+$('camErrBack').addEventListener('click', () => { stopCamera(); show('home'); renderHome(); });
+let hintT;
+function hint(msg){ const h = $('hint'); h.textContent = msg; h.hidden = false; clearTimeout(hintT); hintT = setTimeout(() => h.hidden = true, 4500); }
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && !$('cam').hidden && !stream) startCamera();
+  if (document.visibilityState === 'visible' && stream && 'wakeLock' in navigator && !wakeLock){ try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e){} }
+});
+
+/* Zoom óptico/digital da câmera, quando o aparelho permite */
+function setupZoom(){
+  const z = $('zooms'); z.innerHTML = ''; zoomCaps = null;
+  try {
+    const caps = track.getCapabilities ? track.getCapabilities() : {};
+    if (!caps.zoom || caps.zoom.max <= caps.zoom.min) return;
+    zoomCaps = caps.zoom;
+    const cur = (track.getSettings().zoom) || caps.zoom.min;
+    const opts = [caps.zoom.min, 1, 2].filter((v,i,a) => v >= caps.zoom.min && v <= caps.zoom.max && a.indexOf(v) === i);
+    const levels = [...new Set(opts.map(v => Math.round(v*10)/10))].slice(0,3);
+    if (levels.length < 2) return;
+    levels.forEach(v => {
+      const b = document.createElement('button'); b.type = 'button';
+      b.textContent = (v < 1 ? v.toFixed(1).replace('.',',') : v) + '×';
+      b.setAttribute('aria-pressed', String(Math.abs(v-cur) < 0.05));
+      b.addEventListener('click', async () => {
+        try { await track.applyConstraints({advanced:[{zoom:v}]}); z.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); }
+        catch(e){ toast('Este aparelho não aceitou o zoom.'); }
+      });
+      z.appendChild(b);
+    });
+  } catch(e){}
+}
+
+/* Captura */
+let lastCapture = null;
+$('shutter').addEventListener('click', capture);
+async function capture(){
+  if (!stream || !video.videoWidth){ toast('Câmera ainda não está pronta.'); return; }
+  const W = video.videoWidth, H = video.videoHeight;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  g.drawImage(video, 0, 0, W, H);
+  const ts = Date.now();
+  if (settings.stamp) stamp(g, W, H, curPonto ? curPonto.name : 'Foto avulsa', ts);
+  const fl = $('flash'); fl.style.transition = 'none'; fl.style.opacity = .7; requestAnimationFrame(() => { fl.style.transition = ''; fl.style.opacity = 0; });
+  if (navigator.vibrate) try { navigator.vibrate(30); } catch(e){}
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.92));
+  if (!blob){ toast('Não foi possível gerar a foto.'); return; }
+  const rec = {id:uid(), pontoId: curPonto ? curPonto.id : null, ts, blob, w:W, h:H};
+  if (curPonto){
+    await putRec('fotos', rec);
+    curPonto.updated = ts; curPonto.refId = null; // a mais recente vira referência
+    await putRec('pontos', curPonto);
+  }
+  const name = fileName(curPonto, ts);
+  if (settings.auto) download(blob, name);
+  lastCapture = {rec, name};
+  openReview();
+}
+function stamp(g, W, H, label, ts){
+  const base = Math.max(14, Math.round(Math.min(W,H) * 0.028));
+  const text = `${label}  ·  ${fmtDate(ts)}`;
+  g.font = `600 ${base}px "Barlow", system-ui, sans-serif`;
+  const pad = Math.round(base*0.55), tw = g.measureText(text).width;
+  const x = Math.round(base*0.8), y = H - Math.round(base*0.8);
+  g.fillStyle = 'rgba(0,0,0,0.55)';
+  g.fillRect(x - pad, y - base - pad*0.6, tw + pad*2, base + pad*1.6);
+  g.fillStyle = '#ffffff'; g.textBaseline = 'alphabetic';
+  g.fillText(text, x, y);
+}
+
+/* ================= Revisão ================= */
+function openReview(){
+  const {rec, name} = lastCapture;
+  stopCamera();
+  $('revTitle').textContent = curPonto ? curPonto.name : 'Foto avulsa';
+  $('revImg').src = blobURL(rec.blob);
+  $('revMeta').textContent = `${fmtDate(rec.ts)} · ${rec.w}×${rec.h} px` + (settings.auto ? ' · enviada para Downloads' : '') + (curPonto ? ' · guardada no ponto' : '');
+  $('revDelete').hidden = !curPonto;
+  show('review');
+}
+$('revSave').addEventListener('click', () => { download(lastCapture.rec.blob, lastCapture.name); toast('Foto salva em Downloads.'); });
+$('revShare').addEventListener('click', () => share(lastCapture.rec.blob, lastCapture.name));
+$('revAgain').addEventListener('click', () => openCam(curPonto ? curPonto.id : null));
+$('revBack').addEventListener('click', () => openCam(curPonto ? curPonto.id : null));
+$('revDelete').addEventListener('click', async () => {
+  if (!(await confirmBox('Descartar esta foto?', 'Ela sai do histórico do ponto. Se já foi baixada, a cópia no celular continua lá.', 'Descartar'))) return;
+  await delRec('fotos', lastCapture.rec.id);
+  toast('Foto descartada.');
+  openCam(curPonto.id);
+});
+
+/* ================= Histórico ================= */
+let histPonto = null, histFotos = [];
+async function openHist(pontoId){
+  stopCamera(); freeURLs();
+  histPonto = (await getAll('pontos')).find(p => p.id === pontoId);
+  if (!histPonto){ show('home'); renderHome(); return; }
+  histFotos = await fotosDo(pontoId);
+  $('histTitle').textContent = histPonto.name;
+  $('histCount').textContent = histFotos.length ? `${histFotos.length} foto${histFotos.length>1?'s':''}` : 'Nenhuma foto ainda';
+  const refId = histPonto.refId || (histFotos[histFotos.length-1] || {}).id;
+  const tl = $('timeline'); tl.innerHTML = '';
+  histFotos.slice().reverse().forEach(f => {
+    const b = document.createElement('button'); b.type = 'button';
+    b.style.backgroundImage = `url(${blobURL(f.blob)})`;
+    if (f.id === refId) b.classList.add('ref');
+    b.setAttribute('aria-label', 'Foto de ' + fmtDate(f.ts));
+    const s = document.createElement('span'); s.textContent = fmtDate(f.ts); b.appendChild(s);
+    b.addEventListener('click', () => openPhoto(f.id));
+    tl.appendChild(b);
+  });
+  const cw = $('cmpWrap');
+  if (histFotos.length >= 2){
+    cw.hidden = false;
+    const fill = (sel, idx) => { sel.innerHTML = ''; histFotos.forEach((f,i) => { const o = document.createElement('option'); o.value = i; o.textContent = fmtDate(f.ts); sel.appendChild(o); }); sel.value = idx; };
+    fill($('selA'), 0); fill($('selB'), histFotos.length-1);
+    setCompare();
+  } else cw.hidden = true;
+  show('hist');
+}
+let cmpPos = 0.5;
+function setCompare(){
+  const a = histFotos[+$('selA').value], b = histFotos[+$('selB').value];
+  $('cmpA').src = blobURL(a.blob); $('cmpB').src = blobURL(b.blob);
+  $('tagA').textContent = fmtShort(a.ts); $('tagB').textContent = fmtShort(b.ts);
+  $('cmpA').onload = sizeCompare; sizeCompare();
+}
+function sizeCompare(){
+  const box = $('compare'), w = box.clientWidth;
+  const bi = $('cmpB'); bi.style.width = w + 'px'; bi.style.height = $('cmpA').clientHeight + 'px'; bi.style.objectFit = 'cover';
+  const left = cmpPos * w;
+  const after = $('cmpAfter'); after.style.left = left + 'px'; after.style.width = (w-left) + 'px';
+  bi.style.left = (-left) + 'px';
+  $('cmpHandle').style.left = (left-1) + 'px';
+}
+['selA','selB'].forEach(id => $(id).addEventListener('change', setCompare));
+(() => {
+  const box = $('compare'); let drag = false;
+  const move = (e) => { const r = box.getBoundingClientRect(); cmpPos = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); sizeCompare(); };
+  box.addEventListener('pointerdown', (e) => { drag = true; box.setPointerCapture(e.pointerId); move(e); });
+  box.addEventListener('pointermove', (e) => { if (drag) move(e); });
+  box.addEventListener('pointerup', () => drag = false);
+  box.addEventListener('pointercancel', () => drag = false);
+  window.addEventListener('resize', () => { if (!$('hist').hidden) sizeCompare(); });
+})();
+$('histBack').addEventListener('click', () => { show('home'); renderHome(); });
+$('histCam').addEventListener('click', () => openCam(histPonto.id));
+$('histRename').addEventListener('click', async () => {
+  const n = await askName('Renomear ponto', 'Salvar', histPonto.name);
+  if (!n) return; histPonto.name = n; await putRec('pontos', histPonto); $('histTitle').textContent = n; toast('Nome atualizado.');
+});
+$('histDelete').addEventListener('click', async () => {
+  if (!(await confirmBox(`Excluir “${histPonto.name}”?`, `Apaga o ponto e ${histFotos.length} foto(s) guardadas no app. Cópias já baixadas no celular não são apagadas.`))) return;
+  for (const f of histFotos) await delRec('fotos', f.id);
+  await delRec('pontos', histPonto.id);
+  toast('Ponto excluído.'); show('home'); renderHome();
+});
+
+/* ================= Foto do histórico ================= */
+let curPhoto = null;
+function openPhoto(id){
+  curPhoto = histFotos.find(f => f.id === id); if (!curPhoto) return;
+  const isRef = (histPonto.refId || (histFotos[histFotos.length-1]||{}).id) === id;
+  $('phTitle').textContent = fmtDate(curPhoto.ts);
+  $('phImg').src = blobURL(curPhoto.blob);
+  $('phMeta').textContent = `${histPonto.name} · ${curPhoto.w}×${curPhoto.h} px` + (isRef ? ' · referência atual' : '');
+  $('phRef').hidden = isRef;
+  show('photo');
+}
+$('phBack').addEventListener('click', () => openHist(histPonto.id));
+$('phRef').addEventListener('click', async () => {
+  const last = histFotos[histFotos.length-1];
+  histPonto.refId = (last && last.id === curPhoto.id) ? null : curPhoto.id;
+  await putRec('pontos', histPonto); toast('Referência definida. As próximas fotos usam esta.');
+  openHist(histPonto.id);
+});
+$('phSave').addEventListener('click', () => { download(curPhoto.blob, fileName(histPonto, curPhoto.ts)); toast('Foto salva em Downloads.'); });
+$('phShare').addEventListener('click', () => share(curPhoto.blob, fileName(histPonto, curPhoto.ts)));
+$('phDelete').addEventListener('click', async () => {
+  if (!(await confirmBox('Excluir esta foto?', 'Ela sai do histórico do ponto. A cópia já baixada no celular continua lá.'))) return;
+  await delRec('fotos', curPhoto.id);
+  if (histPonto.refId === curPhoto.id){ histPonto.refId = null; await putRec('pontos', histPonto); }
+  toast('Foto excluída.'); openHist(histPonto.id);
+});
+
+/* ================= Ajustes ================= */
+$('camBack').addEventListener('click', () => { stopCamera(); show('home'); renderHome(); });
+$('btnHist').addEventListener('click', () => { if (curPonto) openHist(curPonto.id); });
+function openSettings(){ $('setStamp').checked = settings.stamp; $('setAuto').checked = settings.auto; $('dlgSettings').hidden = false; }
+$('setStamp').addEventListener('change', e => { settings.stamp = e.target.checked; saveSettings(); });
+$('setAuto').addEventListener('change', e => { settings.auto = e.target.checked; saveSettings(); });
+$('setClose').addEventListener('click', () => $('dlgSettings').hidden = true);
+// botão de ajustes na tela inicial
+(() => {
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'iconbtn flat'; b.id = 'btnSettings';
+  b.setAttribute('aria-label','Ajustes'); b.innerHTML = '<svg><use href="#i-gear"/></svg>';
+  b.style.marginLeft = 'auto'; b.addEventListener('click', openSettings);
+  document.querySelector('.brand').appendChild(b);
+})();
+
+/* Botão voltar do Android */
+history.replaceState({s:'home'}, '');
+let pushed = false;
+const obs = new MutationObserver(() => {
+  const onHome = !$('home').hidden;
+  if (!onHome && !pushed){ history.pushState({s:'in'}, ''); pushed = true; }
+  if (onHome) pushed = false;
+});
+screens.forEach(s => obs.observe($(s), {attributes:true, attributeFilter:['hidden']}));
+window.addEventListener('popstate', () => {
+  pushed = false;
+  if (!$('dlgName').hidden){ $('dlgNameCancel').click(); return; }
+  if (!$('dlgConfirm').hidden){ $('cfNo').click(); return; }
+  if (!$('photo').hidden) return $('phBack').click();
+  if (!$('review').hidden) return $('revBack').click();
+  stopCamera(); show('home'); renderHome();
+});
+
+/* Pede armazenamento persistente para o navegador não apagar as fotos */
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+
+window.__pf = { getAll, fotosDo, settings };
+renderHome().catch(e => { $('plist').innerHTML = '<div class="empty">Não foi possível abrir o armazenamento do navegador. Saia do modo anônimo e abra de novo.</div>'; console.error(e); });
+})();
+</script>
+</body>
+</html>
