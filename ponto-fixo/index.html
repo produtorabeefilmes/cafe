@@ -92,6 +92,9 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .camerr div{max-width:34ch;display:grid;gap:12px;justify-items:center}
 .camerr h2{font:600 24px/1.1 var(--display);margin:0}
 .camerr p{margin:0;color:var(--muted)}
+.lensask{position:absolute;left:max(12px,var(--sal));right:max(12px,var(--sar));top:calc(var(--sat) + 66px);background:rgba(20,24,29,.92);border:1px solid var(--line);border-radius:14px;padding:12px;display:grid;gap:10px}
+.lensask p{margin:0;font-weight:600}
+.lensask .btn{height:42px;font-size:14px}
 .hint{position:absolute;left:50%;top:calc(var(--sat) + 70px);transform:translateX(-50%);background:rgba(20,24,29,.8);padding:8px 14px;border-radius:18px;font-size:13px;white-space:nowrap;pointer-events:none}
 
 /* ---------- Folhas (histórico, revisão, ajustes) ---------- */
@@ -199,6 +202,14 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
     <button class="iconbtn" id="btnHist" type="button" aria-label="Histórico do ponto"><svg><use href="#i-hist"/></svg></button>
   </div>
   <div class="hint" id="hint" hidden></div>
+  <div class="lensask" id="lensAsk" hidden>
+    <p id="lensAskText">A imagem ficou mais aberta que a normal?</p>
+    <div class="btnrow">
+      <button class="btn primary" type="button" id="lensYes">Sim, é a 0,5×</button>
+      <button class="btn" type="button" id="lensNext">Tentar outra</button>
+      <button class="btn" type="button" id="lensCancel" style="flex:0 0 auto">Cancelar</button>
+    </div>
+  </div>
   <div class="bottombar">
     <div class="row" id="refControls">
       <div class="seg" role="group" aria-label="Tipo de referência">
@@ -471,6 +482,8 @@ async function openCam(pontoId, pickRef=false){
   curPonto = pontoId ? (await getAll('pontos')).find(p => p.id === pontoId) : null;
   $('camTitle').textContent = curPonto ? curPonto.name : 'Foto avulsa';
   $('btnHist').hidden = !curPonto;
+  lens = (curPonto && curPonto.lens) || 'main';
+  $('lensAsk').hidden = true; uwTry = null;
   show('cam');
   await setRefFromPonto();
   applyOverlay();
@@ -588,37 +601,78 @@ function layoutStage(){
 let resizeT;
 window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { layoutStage(); if (refBlob){ edgeReady=false; if (settings.mode==='edge') buildEdges(); } }, 150); });
 
-async function startCamera(){
+/* Lentes: 'main' (1×) ou 'uw' (0,5× ultra-angular).
+   O Chrome expõe a 0,5× de dois jeitos, conforme o celular: como zoom abaixo de 1
+   ou como outra câmera traseira. O app testa os dois e lembra o que funcionou. */
+let lens = 'main', backCams = [], curDeviceId = null, curZoom = 1, uwTry = null;
+
+function camVideo(base, w, h){ return Object.assign({width:{ideal:w}, height:{ideal:h}, aspectRatio:{ideal:4/3}}, base); }
+async function openStream(deviceId){
+  const base = deviceId ? {deviceId:{exact:deviceId}} : {facingMode:{ideal:'environment'}};
+  // 4:3, o mesmo formato da câmera nativa do celular, para bater com fotos da galeria
+  const tries = [{audio:false, video:camVideo(base,4032,3024)}, {audio:false, video:camVideo(base,1920,1440)}, {audio:false, video:base}];
+  if (!deviceId) tries.push({audio:false, video:true});
+  let lastErr;
+  for (const c of tries){
+    try { return await navigator.mediaDevices.getUserMedia(c); }
+    catch(e){ lastErr = e; if (e.name === 'NotAllowedError' || e.name === 'SecurityError') break; }
+  }
+  throw lastErr || new Error('sem câmera');
+}
+async function listBackCams(){
+  try {
+    const all = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+    const back = all.filter(d => /back|rear|traseira|environment/i.test(d.label));
+    backCams = back.length ? back : all.filter(d => !/front|frontal|user|selfie/i.test(d.label));
+  } catch(e){ backCams = []; }
+}
+const zoomCapsOf = (t) => { try { const c = t.getCapabilities ? t.getCapabilities() : {}; return c.zoom && c.zoom.max > c.zoom.min ? c.zoom : null; } catch(e){ return null; } };
+
+async function startCamera(forceDevice){
   $('camErr').hidden = true;
   stopCamera();
   if (!window.isSecureContext){ camError('Abra pelo link https', 'A câmera só funciona quando a página é aberta por um endereço https. Abra o link que te mandei no Chrome.'); return; }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ camError('Navegador sem câmera', 'Abra esta página no Google Chrome atualizado.'); return; }
-  const tries = [
-    // 4:3, o mesmo formato da câmera nativa do celular, para bater com fotos da galeria
-    {video:{facingMode:{ideal:'environment'}, width:{ideal:4032}, height:{ideal:3024}, aspectRatio:{ideal:4/3}}, audio:false},
-    {video:{facingMode:{ideal:'environment'}, width:{ideal:1920}, height:{ideal:1440}, aspectRatio:{ideal:4/3}}, audio:false},
-    {video:{facingMode:'environment'}, audio:false},
-    {video:true, audio:false}
-  ];
-  let lastErr;
-  for (const c of tries){
-    try { stream = await navigator.mediaDevices.getUserMedia(c); break; } catch(e){ lastErr = e; if (e.name === 'NotAllowedError' || e.name === 'SecurityError') break; }
+  let devId = forceDevice || null;
+  if (!devId && lens === 'uw' && settings.uwMode === 'device' && settings.uwId) devId = settings.uwId;
+  let err = null;
+  try { stream = await openStream(devId); }
+  catch(e){
+    err = e;
+    if (devId && e.name !== 'NotAllowedError' && e.name !== 'SecurityError'){
+      // a lente salva não abriu: volta para a principal
+      if (!forceDevice){ settings.uwId = null; settings.uwMode = null; saveSettings(); }
+      lens = 'main'; devId = null;
+      try { stream = await openStream(null); err = null; } catch(e2){ err = e2; }
+      if (stream) toast('A lente 0,5× não abriu. Voltei para a principal.');
+    }
   }
   if (!stream){
-    if (lastErr && (lastErr.name === 'NotAllowedError' || lastErr.name === 'SecurityError'))
+    if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError'))
       camError('Câmera bloqueada', 'Toque no cadeado ao lado do endereço, em Permissões, e libere a Câmera. Depois toque em Tentar de novo.');
     else camError('Câmera indisponível', 'Feche outros apps que estejam usando a câmera e tente de novo.');
     return;
   }
   track = stream.getVideoTracks()[0];
+  try { curDeviceId = track.getSettings().deviceId || null; } catch(e){ curDeviceId = null; }
+  if (!devId && curDeviceId){ settings.mainId = curDeviceId; saveSettings(); }
+  curZoom = 1;
+  try { const z = track.getSettings().zoom; if (z) curZoom = z; } catch(e){}
+  // 0,5× via zoom, quando é assim que o aparelho oferece
+  if (lens === 'uw' && !devId){
+    const zc = zoomCapsOf(track);
+    if (zc && zc.min < 0.95){ try { await track.applyConstraints({advanced:[{zoom:zc.min}]}); curZoom = zc.min; } catch(e){ lens = 'main'; } }
+    else lens = 'main';
+  }
   video.srcObject = stream;
   try { await video.play(); } catch(e){}
   await new Promise(r => { if (video.videoWidth) r(); else video.onloadedmetadata = () => r(); });
   layoutStage();
   if (refBlob){ edgeReady = false; if (settings.mode === 'edge') buildEdges(); }
+  await listBackCams();
   setupZoom();
   try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch(e){}
-  if (!refBlob && curPonto) hint('Primeira foto: escolha bem o lugar e marque no chão onde ficou.');
+  if (!refBlob && curPonto && !uwTry) hint('Primeira foto: escolha bem o lugar e marque no chão onde ficou.');
 }
 function stopCamera(){
   $('hint').hidden = true; clearTimeout(hintT);
@@ -627,7 +681,7 @@ function stopCamera(){
   if (wakeLock){ try{ wakeLock.release(); }catch(e){} wakeLock = null; }
 }
 function camError(title, text){ $('camErrTitle').textContent = title; $('camErrText').textContent = text; $('camErr').hidden = false; }
-$('camRetry').addEventListener('click', startCamera);
+$('camRetry').addEventListener('click', () => startCamera());
 $('camErrBack').addEventListener('click', () => { stopCamera(); show('home'); renderHome(); });
 let hintT;
 function hint(msg){ const h = $('hint'); h.textContent = msg; h.hidden = false; clearTimeout(hintT); hintT = setTimeout(() => h.hidden = true, 4500); }
@@ -636,34 +690,81 @@ document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'visible' && stream && 'wakeLock' in navigator && !wakeLock){ try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e){} }
 });
 
-/* Zoom óptico/digital da câmera, quando o aparelho permite */
+/* Botões de lente e zoom: 0,5× · 1× · 2× */
 function setupZoom(){
-  const z = $('zooms'); z.innerHTML = ''; zoomCaps = null;
-  try {
-    const caps = track.getCapabilities ? track.getCapabilities() : {};
-    if (!caps.zoom || caps.zoom.max <= caps.zoom.min) return;
-    zoomCaps = caps.zoom;
-    const cur = (track.getSettings().zoom) || caps.zoom.min;
-    const opts = [caps.zoom.min, 1, 2].filter((v,i,a) => v >= caps.zoom.min && v <= caps.zoom.max && a.indexOf(v) === i);
-    const levels = [...new Set(opts.map(v => Math.round(v*10)/10))].slice(0,3);
-    if (levels.length < 2) return;
-    levels.forEach(v => {
-      const b = document.createElement('button'); b.type = 'button';
-      b.textContent = (v < 1 ? v.toFixed(1).replace('.',',') : v) + '×';
-      b.setAttribute('aria-pressed', String(Math.abs(v-cur) < 0.05));
-      b.addEventListener('click', async () => {
-        try { await track.applyConstraints({advanced:[{zoom:v}]}); z.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); }
-        catch(e){ toast('Este aparelho não aceitou o zoom.'); }
-      });
-      z.appendChild(b);
-    });
-  } catch(e){}
+  const z = $('zooms'); z.innerHTML = '';
+  const onUWDevice = lens === 'uw' && settings.uwMode === 'device' && curDeviceId && curDeviceId === settings.uwId;
+  const zc = track ? zoomCapsOf(track) : null;
+  const mk = (label, pressed, fn) => {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = label;
+    b.setAttribute('aria-pressed', String(pressed)); b.addEventListener('click', fn); z.appendChild(b); return b;
+  };
+  const isUW = lens === 'uw';
+  mk('0,5×', isUW, goUW);
+  mk('1×', !isUW && Math.abs(curZoom - 1) < 0.15, () => setMainZoom(1));
+  if (!onUWDevice && zc && zc.max >= 2) mk('2×', !isUW && Math.abs(curZoom - 2) < 0.15, () => setMainZoom(2));
 }
+async function setMainZoom(v){
+  if (uwTry) endUWTry(false);
+  const onUWDevice = settings.uwMode === 'device' && curDeviceId && curDeviceId === settings.uwId;
+  if (onUWDevice){ lens = 'main'; await startCamera(); if (v !== 1) await setMainZoom(v); return; }
+  lens = 'main';
+  const zc = zoomCapsOf(track);
+  if (zc){ const t = Math.min(zc.max, Math.max(zc.min, v)); try { await track.applyConstraints({advanced:[{zoom:t}]}); curZoom = t; } catch(e){ if (v !== 1) toast('Este aparelho não aceitou o zoom.'); } }
+  else if (v !== 1) toast('Este aparelho não aceita zoom pelo navegador.');
+  setupZoom();
+}
+async function goUW(){
+  if (lens === 'uw' && !uwTry) return;
+  if (uwTry) return;
+  // 1) já sabemos qual é a lente 0,5× deste celular
+  if (settings.uwMode === 'device' && settings.uwId && backCams.some(d => d.deviceId === settings.uwId)){ lens = 'uw'; await startCamera(); return; }
+  // 2) o aparelho oferece zoom abaixo de 1
+  const zc = zoomCapsOf(track);
+  if (zc && zc.min < 0.95){
+    try { await track.applyConstraints({advanced:[{zoom:zc.min}]}); curZoom = zc.min; lens = 'uw'; settings.uwMode = 'zoom'; saveSettings(); setupZoom(); return; }
+    catch(e){}
+  }
+  // 3) procurar entre as outras câmeras traseiras
+  const others = backCams.filter(d => d.deviceId && d.deviceId !== (settings.mainId || curDeviceId));
+  if (!others.length){
+    toast('O Chrome não libera a lente 0,5× neste celular. Só a câmera principal está disponível para o navegador.', 5200);
+    return;
+  }
+  uwTry = {list: others, i: 0};
+  tryUW();
+}
+async function tryUW(){
+  const {list, i} = uwTry;
+  await startCamera(list[i].deviceId);
+  if (!stream || curDeviceId !== list[i].deviceId){ return nextUW(); }
+  $('lensAskText').textContent = `Lente ${i+2} de ${list.length+1}. A imagem ficou mais aberta que a normal?`;
+  $('lensAsk').hidden = false;
+}
+async function nextUW(){
+  uwTry.i++;
+  if (uwTry.i >= uwTry.list.length){
+    endUWTry(false); lens = 'main'; await startCamera();
+    toast('Nenhuma lente extra é a 0,5×. O Chrome não libera a ultra-angular neste celular.', 5200);
+    return;
+  }
+  tryUW();
+}
+function endUWTry(found){
+  $('lensAsk').hidden = true;
+  if (found && uwTry){ settings.uwId = uwTry.list[uwTry.i].deviceId; settings.uwMode = 'device'; lens = 'uw'; saveSettings(); }
+  uwTry = null;
+  setupZoom();
+}
+$('lensYes').addEventListener('click', () => { endUWTry(true); toast('Pronto. A 0,5× fica salva para as próximas vezes.'); });
+$('lensNext').addEventListener('click', () => { $('lensAsk').hidden = true; nextUW(); });
+$('lensCancel').addEventListener('click', async () => { endUWTry(false); lens = 'main'; await startCamera(); });
 
 /* Captura */
 let lastCapture = null;
 $('shutter').addEventListener('click', capture);
 async function capture(){
+  if (uwTry){ toast('Primeiro responda se a lente ficou mais aberta.'); return; }
   if (!stream || !video.videoWidth){ toast('Câmera ainda não está pronta.'); return; }
   const W = video.videoWidth, H = video.videoHeight;
   const c = document.createElement('canvas'); c.width = W; c.height = H;
@@ -675,10 +776,10 @@ async function capture(){
   if (navigator.vibrate) try { navigator.vibrate(30); } catch(e){}
   const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.92));
   if (!blob){ toast('Não foi possível gerar a foto.'); return; }
-  const rec = {id:uid(), pontoId: curPonto ? curPonto.id : null, ts, blob, w:W, h:H};
+  const rec = {id:uid(), pontoId: curPonto ? curPonto.id : null, ts, blob, w:W, h:H, lens};
   if (curPonto){
     await putRec('fotos', rec);
-    curPonto.updated = ts; curPonto.refId = null; // a mais recente vira referência
+    curPonto.updated = ts; curPonto.refId = null; curPonto.lens = lens; // a mais recente vira referência e a lente fica salva
     await putRec('pontos', curPonto);
   }
   const name = fileName(curPonto, ts);
@@ -814,7 +915,7 @@ $('phDelete').addEventListener('click', async () => {
 });
 
 /* ================= Ajustes ================= */
-$('camBack').addEventListener('click', () => { stopCamera(); show('home'); renderHome(); });
+$('camBack').addEventListener('click', () => { $('lensAsk').hidden = true; uwTry = null; stopCamera(); show('home'); renderHome(); });
 $('btnHist').addEventListener('click', () => { if (curPonto) openHist(curPonto.id); });
 function openSettings(){ $('setStamp').checked = settings.stamp; $('setAuto').checked = settings.auto; $('dlgSettings').hidden = false; }
 $('setStamp').addEventListener('change', e => { settings.stamp = e.target.checked; saveSettings(); });
@@ -849,7 +950,7 @@ window.addEventListener('popstate', () => {
 /* Pede armazenamento persistente para o navegador não apagar as fotos */
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
-window.__pf = { getAll, fotosDo, settings };
+window.__pf = { getAll, fotosDo, settings, state: () => ({lens, curDeviceId, curZoom, trying: !!uwTry}) };
 renderHome().catch(e => { $('plist').innerHTML = '<div class="empty">Não foi possível abrir o armazenamento do navegador. Saia do modo anônimo e abra de novo.</div>'; console.error(e); });
 })();
 </script>
